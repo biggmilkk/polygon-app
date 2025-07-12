@@ -209,7 +209,9 @@ if st.session_state.get("generate_trigger"):
         st.warning("No valid polygons found.")
     st.session_state["generate_trigger"] = False
 
-if st.session_state.get("coords"):
+if not st.session_state.get("coords"):
+    st.error("No valid coordinates or polygons provided. Please enter coordinates or upload a valid file.")
+else:
     polygons = st.session_state["coords"]
 
     with st.spinner("Generating map and estimating population..."):
