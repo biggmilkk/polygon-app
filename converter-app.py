@@ -18,6 +18,7 @@ for key, default in {
     "coords": [],
     "coord_trigger": False,
     "upload_trigger": False,
+    "last_input_mode": None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -30,6 +31,10 @@ st.markdown(
 
 input_mode = st.radio("Choose Input Method", ["Paste Coordinates", "Upload Map Files"], horizontal=True)
 
+if st.session_state["last_input_mode"] != input_mode:
+    st.session_state["last_input_mode"] = input_mode
+    st.session_state["coords"] = []
+
 if input_mode == "Paste Coordinates":
     st.text_area("Coordinates:", height=150, key="coord_input")
     if st.button("Generate Map", use_container_width=True):
@@ -40,7 +45,6 @@ elif input_mode == "Upload Map Files":
     if st.button("Generate Map", use_container_width=True):
         st.session_state["upload_trigger"] = True
         st.session_state["coord_trigger"] = False
-
 
 def dm_to_dd(dm):
     degrees = int(dm // 100)
@@ -114,7 +118,6 @@ def parse_coords(text):
     except:
         return []
 
-
 def extract_coords_from_kml_string(kml_string):
     ns = {'kml': 'http://www.opengis.net/kml/2.2'}
     root = ET.fromstring(kml_string)
@@ -133,7 +136,6 @@ def extract_coords_from_kml_string(kml_string):
             polygons.append(coords)
     return polygons
 
-
 def extract_coords_from_kmz(file_bytes):
     with zipfile.ZipFile(BytesIO(file_bytes)) as kmz:
         for name in kmz.namelist():
@@ -141,7 +143,6 @@ def extract_coords_from_kmz(file_bytes):
                 kml_string = kmz.read(name).decode("utf-8")
                 return extract_coords_from_kml_string(kml_string)
     return []
-
 
 def estimate_population_from_coords(multi_coords, raster_path):
     try:
@@ -179,6 +180,8 @@ if st.session_state["coord_trigger"]:
 
 # --- Upload Trigger Logic ---
 if st.session_state["upload_trigger"]:
+    if "uploaded_files" not in locals():
+        uploaded_files = []
     if not uploaded_files:
         st.error("Please upload a valid file.")
     else:
