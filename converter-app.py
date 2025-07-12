@@ -204,14 +204,14 @@ if st.session_state.get("generate_trigger"):
 
     if all_polygons:
         st.session_state["coords"] = all_polygons
+        st.session_state["generate_trigger"] = False
     else:
         st.session_state["coords"] = []
-        st.warning("No valid polygons found.")
-    st.session_state["generate_trigger"] = False
-
+        st.error("No valid coordinates or polygons provided. Please enter coordinates or upload a valid file.")
+    
 if not st.session_state.get("coords"):
     if st.session_state.get("generate_trigger") is False:
-        pass  # No error yet — user hasn’t clicked "Generate Map"
+        pass
     else:
         st.error("No valid coordinates or polygons provided. Please enter coordinates or upload a valid file.")
 else:
