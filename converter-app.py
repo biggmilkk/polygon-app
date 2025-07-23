@@ -259,9 +259,8 @@ if st.session_state['generate_done'] and st.session_state['coords']:
             ]
         }
 
-        # three download buttons
-        c1, c2, c3 = st.columns(3)
-        with c1:
+        col1, col2 = st.columns(2)
+        with col1:
             st.download_button(
                 "Download KML",
                 kml.kml().encode('utf-8'),
@@ -269,20 +268,19 @@ if st.session_state['generate_done'] and st.session_state['coords']:
                 mime="application/vnd.google-earth.kml+xml",
                 use_container_width=True
             )
-        with c2:
-            st.download_button(
-                "Download GeoJSON",
-                json.dumps(gj, indent=2).encode('utf-8'),
-                file_name="polygons.geojson",
-                mime="application/geo+json",
-                use_container_width=True
-            )
-        with c3:
             st.download_button(
                 "Download Merged KML",
                 merged_kml_bytes,
                 file_name="merged_polygons.kml",
                 mime="application/vnd.google-earth.kml+xml",
+                use_container_width=True
+            )
+        with col2:
+            st.download_button(
+                "Download GeoJSON",
+                json.dumps(gj, indent=2).encode('utf-8'),
+                file_name="polygons.geojson",
+                mime="application/geo+json",
                 use_container_width=True
             )
             st.download_button(
