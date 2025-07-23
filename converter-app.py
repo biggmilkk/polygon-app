@@ -272,4 +272,4 @@ if st.session_state['generate_done'] and st.session_state['coords']:
 
     # embed with fixed height via components.html to avoid extra whitespace
     html_str = m.get_root().render()
-    st_html(html_str, height=400, width=700, scrolling=False")
+    st_html(html_str, height=400, width=700, scrolling=False)
