@@ -11,6 +11,8 @@ import json
 from xml.etree import ElementTree as ET
 import zipfile
 from io import BytesIO
+from shapely.geometry import Polygon, mapping
+from shapely.ops import unary_union
 
 st.set_page_config(page_title="Polygon Generator and Population Estimate", layout="centered")
 
@@ -42,9 +44,9 @@ def dm_to_dd(dm):
     mins = dm % 100
     return round(deg + mins/60, 6)
 
-def dms_to_dd(d, m, s, direction):
+def dms_to_dd(d, m, s, dir):
     dd = d + m/60 + s/3600
-    if direction in ['S','W']:
+    if dir in ['S','W']:
         dd *= -1
     return round(dd, 6)
 
@@ -63,7 +65,7 @@ def parse_coords(text):
                 lat = dms_to_dd(int(ld), int(lm), int(ls), ldir)
                 lon = dms_to_dd(int(od), int(om), int(os), odir)
                 coords.append((lat, lon))
-            if coords[0] != coords[-1]:
+            if coords and coords[0] != coords[-1]:
                 coords.append(coords[0])
             return [coords]
         except:
@@ -74,7 +76,7 @@ def parse_coords(text):
             nums = list(map(float, floats))
             for i in range(0, len(nums)-1, 2):
                 coords.append((nums[i], nums[i+1]))
-            if coords[0] != coords[-1]:
+            if coords and coords[0] != coords[-1]:
                 coords.append(coords[0])
             return [coords]
         except:
@@ -85,7 +87,7 @@ def parse_coords(text):
         if all(t % 100 < 60 for t in toks):
             for i in range(0, len(toks)-1, 2):
                 coords.append((dm_to_dd(toks[i]), -dm_to_dd(toks[i+1])))
-            if coords[0] != coords[-1]:
+            if coords and coords[0] != coords[-1]:
                 coords.append(coords[0])
             return [coords]
     except:
@@ -95,7 +97,7 @@ def parse_coords(text):
         toks = list(map(int, ints))
         for i in range(0, len(toks)-1, 2):
             coords.append((toks[i]/100.0, -toks[i+1]/100.0))
-        if coords[0] != coords[-1]:
+        if coords and coords[0] != coords[-1]:
             coords.append(coords[0])
         return [coords]
     except:
@@ -110,7 +112,7 @@ def extract_coords_from_kml_string(kml_str):
         for c in node.text.strip().split():
             lon, lat = map(float, c.split(',')[:2])
             pts.append((lat, lon))
-        if pts[0] != pts[-1]:
+        if pts and pts[0] != pts[-1]:
             pts.append(pts[0])
         polys.append(pts)
     return polys
@@ -125,9 +127,9 @@ def extract_coords_from_kmz(kmz_bytes):
 def estimate_population_from_coords(multi_coords, raster_path):
     try:
         feats = [{
-            "type":"Feature",
-            "geometry":{"type":"Polygon","coordinates":[[(lon,lat) for lat,lon in coords]]},
-            "properties":{}
+            "type": "Feature",
+            "geometry": {"type": "Polygon", "coordinates": [[(lon, lat) for lat, lon in coords]]},
+            "properties": {}
         } for coords in multi_coords]
         with tempfile.NamedTemporaryFile(delete=False, suffix='.geojson', mode='w') as tmp:
             gpd.GeoDataFrame.from_features(feats).to_file(tmp.name, driver='GeoJSON')
@@ -149,14 +151,14 @@ def _on_upload_change():
                 gj = json.load(u)
                 feats = gj.get('features',[gj])
                 for f in feats:
-                    g = f['geometry']
-                    if g['type'].lower() == 'polygon':
-                        coords = g['coordinates'][0]
+                    geom = f['geometry']
+                    if geom['type'].lower() == 'polygon':
+                        coords = geom['coordinates'][0]
                         if coords[0] != coords[-1]:
                             coords.append(coords[0])
                         polys.append([(lat,lon) for lon,lat in coords])
-                    elif g['type'].lower() == 'multipolygon':
-                        for part in g['coordinates']:
+                    elif geom['type'].lower() == 'multipolygon':
+                        for part in geom['coordinates']:
                             c = part[0]
                             if c[0] != c[-1]:
                                 c.append(c[0])
@@ -168,16 +170,14 @@ def _on_upload_change():
         except Exception as e:
             st.error(f"Error in {u.name}: {e}")
     st.session_state['coords'] = polys
-
-    # reset generate button if all files removed
     if not files:
+        # reset generate if all removed
         st.session_state['generate_done'] = False
-    # otherwise if we've already generated, bump to re-render
     elif st.session_state['generate_done']:
         st.session_state['map_key'] += 1
 
 # --- Input mode selector ---
-input_mode = st.radio("Choose Input Method", ["Paste Coordinates","Upload Map Files"], horizontal=True)
+input_mode = st.radio("Choose Input Method", ["Paste Coordinates", "Upload Map Files"], horizontal=True)
 if st.session_state['last_input_mode'] != input_mode:
     st.session_state['last_input_mode'] = input_mode
     st.session_state['coords'] = []
@@ -226,11 +226,12 @@ if st.session_state['upload_trigger']:
         st.error("Please upload a valid file.")
     st.session_state['upload_trigger'] = False
 
-# --- Display Map & Population Estimate (only after Generate) ---
+# --- Display Map, Downloads & Population (only after Generate) ---
 if st.session_state['generate_done'] and st.session_state['coords']:
     polygons = st.session_state['coords']
 
     with st.spinner("Generating map and estimating population..."):
+        # build individual KML & GeoJSON
         kml = simplekml.Kml()
         for i, poly in enumerate(polygons):
             kml.newpolygon(name=f"Polygon {i+1}", outerboundaryis=[(lon,lat) for lat,lon in poly])
@@ -245,17 +246,52 @@ if st.session_state['generate_done'] and st.session_state['coords']:
             ]
         }
 
-        c1, c2 = st.columns(2)
+        # build merged geometry
+        merged_geom = unary_union([Polygon(poly) for poly in polygons])
+        merged_coords = list(merged_geom.exterior.coords)
+        mkml = simplekml.Kml()
+        mkml.newpolygon(name="Merged Polygon", outerboundaryis=[(lon,lat) for lat,lon in merged_coords])
+        merged_kml_bytes = mkml.kml().encode('utf-8')
+        merged_gj = {
+            "type":"FeatureCollection",
+            "features":[
+                {"type":"Feature","geometry":mapping(merged_geom),"properties":{}}
+            ]
+        }
+
+        # three download buttons
+        c1, c2, c3 = st.columns(3)
         with c1:
-            st.download_button("Download KML", kml.kml().encode('utf-8'),
-                               file_name="polygons.kml",
-                               mime="application/vnd.google-earth.kml+xml",
-                               use_container_width=True)
+            st.download_button(
+                "Download KML",
+                kml.kml().encode('utf-8'),
+                file_name="polygons.kml",
+                mime="application/vnd.google-earth.kml+xml",
+                use_container_width=True
+            )
         with c2:
-            st.download_button("Download GeoJSON", json.dumps(gj, indent=2).encode('utf-8'),
-                               file_name="polygons.geojson",
-                               mime="application/geo+json",
-                               use_container_width=True)
+            st.download_button(
+                "Download GeoJSON",
+                json.dumps(gj, indent=2).encode('utf-8'),
+                file_name="polygons.geojson",
+                mime="application/geo+json",
+                use_container_width=True
+            )
+        with c3:
+            st.download_button(
+                "Download Merged KML",
+                merged_kml_bytes,
+                file_name="merged_polygons.kml",
+                mime="application/vnd.google-earth.kml+xml",
+                use_container_width=True
+            )
+            st.download_button(
+                "Download Merged GeoJSON",
+                json.dumps(merged_gj, indent=2).encode('utf-8'),
+                file_name="merged_polygons.geojson",
+                mime="application/geo+json",
+                use_container_width=True
+            )
 
         pop = estimate_population_from_coords(polygons, "data/landscan-global-2023.tif")
         if pop is not None:
