@@ -14,38 +14,30 @@ from io import BytesIO
 
 st.set_page_config(page_title="Polygon Generator and Population Estimate", layout="centered")
 
+# --- Session state initialization ---
 for key, default in {
     "coords": [],
     "coord_trigger": False,
     "upload_trigger": False,
     "last_input_mode": None,
+    "generate_done": False,    # has "Generate Map" been clicked?
+    "map_key": 0,              # bump this to remount the map
+    "map_refreshed": False,    # tracks if we've auto-refreshed layout
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
+# --- Page header ---
 st.markdown("<h2 style='text-align: center;'>Polygon Generator and Population Estimate</h2>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; font-size: 0.9rem; color: grey;'>Upload spatial data files or enter coordinates manually to visualize geographic areas on an interactive map. Define custom polygons and generate population estimates using LandScan data.</p>",
+    "<p style='text-align: center; font-size: 0.9rem; color: grey;'>"
+    "Upload spatial data files or enter coordinates manually to visualize geographic areas "
+    "on an interactive map. Define custom polygons and generate population estimates using LandScan data."
+    "</p>",
     unsafe_allow_html=True
 )
 
-input_mode = st.radio("Choose Input Method", ["Paste Coordinates", "Upload Map Files"], horizontal=True)
-
-if st.session_state["last_input_mode"] != input_mode:
-    st.session_state["last_input_mode"] = input_mode
-    st.session_state["coords"] = []
-
-if input_mode == "Paste Coordinates":
-    st.text_area("Coordinates:", height=150, key="coord_input")
-    if st.button("Generate Map", use_container_width=True):
-        st.session_state["coord_trigger"] = True
-        st.session_state["upload_trigger"] = False
-elif input_mode == "Upload Map Files":
-    uploaded_files = st.file_uploader("Upload Polygon Files (KML, KMZ, GeoJSON, JSON)", type=["kml", "kmz", "geojson", "json"], accept_multiple_files=True)
-    if st.button("Generate Map", use_container_width=True):
-        st.session_state["upload_trigger"] = True
-        st.session_state["coord_trigger"] = False
-
+# --- Helper functions ---
 def dm_to_dd(dm):
     degrees = int(dm // 100)
     minutes = dm % 100
@@ -85,7 +77,7 @@ def parse_coords(text):
                 lat = floats[i]
                 lon = floats[i + 1]
                 coords.append((lat, lon))
-            if coords[0] != coords[-1]:
+            if coords and coords[0] != coords[-1]:
                 coords.append(coords[0])
             return [coords]
         except:
@@ -112,7 +104,7 @@ def parse_coords(text):
             lat = tokens[i] / 100.0
             lon = -tokens[i + 1] / 100.0
             coords.append((lat, lon))
-        if coords[0] != coords[-1]:
+        if coords and coords[0] != coords[-1]:
             coords.append(coords[0])
         return [coords]
     except:
@@ -165,6 +157,76 @@ def estimate_population_from_coords(multi_coords, raster_path):
         st.error(f"Error estimating population: {e}")
         return None
 
+# --- Upload‐uploader on_change callback ---
+def _on_upload_change():
+    files = st.session_state.uploaded_files or []
+    polygons = []
+    for u in files:
+        ext = u.name.rsplit(".", 1)[-1].lower()
+        try:
+            if ext in ("geojson", "json"):
+                gj = json.load(u)
+                feats = gj.get("features", [gj])
+                for f in feats:
+                    geom = f["geometry"]
+                    if geom["type"].lower() == "polygon":
+                        coords = geom["coordinates"][0]
+                        if coords[0] != coords[-1]:
+                            coords.append(coords[0])
+                        polygons.append([(lat, lon) for lon, lat in coords])
+                    elif geom["type"].lower() == "multipolygon":
+                        for part in geom["coordinates"]:
+                            coords = part[0]
+                            if coords[0] != coords[-1]:
+                                coords.append(coords[0])
+                            polygons.append([(lat, lon) for lon, lat in coords])
+            elif ext == "kml":
+                doc = u.read().decode("utf-8")
+                polygons.extend(extract_coords_from_kml_string(doc))
+            elif ext == "kmz":
+                polygons.extend(extract_coords_from_kmz(u.read()))
+        except Exception as e:
+            st.error(f"Error in {u.name}: {e}")
+
+    st.session_state["coords"] = polygons
+
+    # if we've already generated, bump map_key to auto-update
+    if st.session_state["generate_done"]:
+        st.session_state["map_key"] += 1
+        st.session_state["map_refreshed"] = False
+
+# --- Input method selector ---
+input_mode = st.radio("Choose Input Method", ["Paste Coordinates", "Upload Map Files"], horizontal=True)
+if st.session_state["last_input_mode"] != input_mode:
+    st.session_state["last_input_mode"] = input_mode
+    st.session_state["coords"] = []
+
+# --- Paste Coordinates branch ---
+if input_mode == "Paste Coordinates":
+    st.text_area("Coordinates:", height=150, key="coord_input")
+    if st.button("Generate Map", use_container_width=True):
+        st.session_state["coord_trigger"] = True
+        st.session_state["upload_trigger"] = False
+        st.session_state["generate_done"] = True
+        st.session_state["map_key"] += 1
+        st.session_state["map_refreshed"] = False
+
+# --- Upload Map Files branch ---
+else:
+    uploaded_files = st.file_uploader(
+        "Upload Polygon Files (KML, KMZ, GeoJSON, JSON)",
+        type=["kml", "kmz", "geojson", "json"],
+        key="uploaded_files",
+        accept_multiple_files=True,
+        on_change=_on_upload_change
+    )
+    if st.button("Generate Map", use_container_width=True):
+        st.session_state["upload_trigger"] = True
+        st.session_state["coord_trigger"] = False
+        st.session_state["generate_done"] = True
+        st.session_state["map_key"] += 1
+        st.session_state["map_refreshed"] = False
+
 # --- Coordinate Trigger Logic ---
 if st.session_state["coord_trigger"]:
     text = st.session_state.get("coord_input", "")
@@ -180,13 +242,12 @@ if st.session_state["coord_trigger"]:
 
 # --- Upload Trigger Logic ---
 if st.session_state["upload_trigger"]:
-    if "uploaded_files" not in locals():
-        uploaded_files = []
-    if not uploaded_files:
+    if not st.session_state.get("uploaded_files"):
         st.error("Please upload a valid file.")
     else:
+        # legacy parsing (optional, since on_change already did it)
         polygons = []
-        for uploaded_file in uploaded_files:
+        for uploaded_file in st.session_state["uploaded_files"]:
             file_type = uploaded_file.name.split('.')[-1].lower()
             try:
                 if file_type in ["geojson", "json"]:
@@ -198,15 +259,13 @@ if st.session_state["upload_trigger"]:
                             coords = geom["coordinates"][0]
                             if coords[0] != coords[-1]:
                                 coords.append(coords[0])
-                            coords = [(lat, lon) for lon, lat in coords]
-                            polygons.append(coords)
+                            polygons.append([(lat, lon) for lon, lat in coords])
                         elif geom["type"].lower() == "multipolygon":
                             for part in geom["coordinates"]:
                                 coords = part[0]
                                 if coords[0] != coords[-1]:
                                     coords.append(coords[0])
-                                coords = [(lat, lon) for lon, lat in coords]
-                                polygons.append(coords)
+                                polygons.append([(lat, lon) for lon, lat in coords])
                 elif file_type == "kml":
                     doc = uploaded_file.read().decode("utf-8")
                     polygons.extend(extract_coords_from_kml_string(doc))
@@ -221,8 +280,8 @@ if st.session_state["upload_trigger"]:
             st.error("No valid polygons found.")
     st.session_state["upload_trigger"] = False
 
-# --- Display Map and Downloads ---
-if st.session_state.get("coords"):
+# --- Display Map, Downloads & Population Estimate ---
+if st.session_state["generate_done"] and st.session_state["coords"]:
     polygons = st.session_state["coords"]
 
     with st.spinner("Generating map and estimating population..."):
@@ -234,30 +293,55 @@ if st.session_state.get("coords"):
         geojson_data = {
             "type": "FeatureCollection",
             "features": [
-                {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[(lon, lat) for lat, lon in poly]]}, "properties": {}} for poly in polygons
+                {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[(lon, lat) for lat, lon in poly]]}, "properties": {}}
+                for poly in polygons
             ]
         }
 
         col1, col2 = st.columns(2)
         with col1:
-            st.download_button("Download KML", kml.kml().encode("utf-8"), file_name="polygons.kml", mime="application/vnd.google-earth.kml+xml", use_container_width=True)
+            st.download_button(
+                "Download KML",
+                kml.kml().encode("utf-8"),
+                file_name="polygons.kml",
+                mime="application/vnd.google-earth.kml+xml",
+                use_container_width=True
+            )
         with col2:
-            st.download_button("Download GeoJSON", json.dumps(geojson_data, indent=2).encode("utf-8"), file_name="polygons.geojson", mime="application/geo+json", use_container_width=True)
+            st.download_button(
+                "Download GeoJSON",
+                json.dumps(geojson_data, indent=2).encode("utf-8"),
+                file_name="polygons.geojson",
+                mime="application/geo+json",
+                use_container_width=True
+            )
 
         population = estimate_population_from_coords(polygons, "data/landscan-global-2023.tif")
         if population is not None:
             st.success(f"Estimated Population: {population:,.0f}")
 
-        st.markdown("<h4 style='text-align: center;'>Polygon Preview</h4>", unsafe_allow_html=True)
-        m = folium.Map(tiles="CartoDB positron")
-        all_points = []
-        for poly in polygons:
-            folium.Polygon(locations=poly, color="blue", fill=True).add_to(m)
-            all_points.extend(poly)
+    st.markdown("<h4 style='text-align: center;'>Polygon Preview</h4>", unsafe_allow_html=True)
+    m = folium.Map(tiles="CartoDB positron")
+    all_points = []
+    for poly in polygons:
+        folium.Polygon(locations=poly, color="blue", fill=True).add_to(m)
+        all_points.extend(poly)
 
-        if all_points:
-            bounds = [[min(p[0] for p in all_points), min(p[1] for p in all_points)],
-                      [max(p[0] for p in all_points), max(p[1] for p in all_points)]]
-            m.fit_bounds(bounds, padding=(5, 5))
+    if all_points:
+        bounds = [
+            [min(p[0] for p in all_points), min(p[1] for p in all_points)],
+            [max(p[0] for p in all_points), max(p[1] for p in all_points)]
+        ]
+        m.fit_bounds(bounds, padding=(5, 5))
 
-        st_folium(m, width=700, height=400, key="map_view", returned_objects=[])
+    st_folium(
+        m,
+        width=700,
+        height=400,
+        key=f"map_view_{st.session_state['map_key']}"
+    )
+
+    # one-time rerun to collapse any extra padding
+    if not st.session_state["map_refreshed"]:
+        st.session_state["map_refreshed"] = True
+        st.rerun()
