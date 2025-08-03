@@ -264,7 +264,7 @@ if st.session_state['generate_done'] and st.session_state['coords']:
                 ]
             }
         else:
-            st.error("Multiple disjoint polygons detected; merged polygon download is disabled for now.")
+            st.error("Multiple disjoint polygons detected.")
 
         col1, col2 = st.columns(2)
         with col1:
