@@ -11,7 +11,7 @@ import json
 from xml.etree import ElementTree as ET
 import zipfile
 from io import BytesIO
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import Polygon, mapping, MultiPolygon
 from shapely.ops import unary_union
 
 st.set_page_config(page_title="Polygon Generator and Population Estimate", layout="centered")
@@ -46,7 +46,7 @@ def dm_to_dd(dm):
 
 def dms_to_dd(d, m, s, dir):
     dd = d + m/60 + s/3600
-    if dir in ['S','W']:
+    if dir in ['S', 'W']:
         dd *= -1
     return round(dd, 6)
 
@@ -246,18 +246,25 @@ if st.session_state['generate_done'] and st.session_state['coords']:
             ]
         }
 
-        # build merged geometry
+        # build merged geometry but only allow if result is a single Polygon
         merged_geom = unary_union([Polygon(poly) for poly in polygons])
-        merged_coords = list(merged_geom.exterior.coords)
-        mkml = simplekml.Kml()
-        mkml.newpolygon(name="Merged Polygon", outerboundaryis=[(lon,lat) for lat,lon in merged_coords])
-        merged_kml_bytes = mkml.kml().encode('utf-8')
-        merged_gj = {
-            "type":"FeatureCollection",
-            "features":[
-                {"type":"Feature","geometry":mapping(merged_geom),"properties":{}}
-            ]
-        }
+        merged_available = False
+        merged_kml_bytes = None
+        merged_gj = None
+        if isinstance(merged_geom, Polygon):
+            merged_available = True
+            merged_coords = list(merged_geom.exterior.coords)
+            mkml = simplekml.Kml()
+            mkml.newpolygon(name="Merged Polygon", outerboundaryis=[(lon,lat) for lat,lon in merged_coords])
+            merged_kml_bytes = mkml.kml().encode('utf-8')
+            merged_gj = {
+                "type":"FeatureCollection",
+                "features":[
+                    {"type":"Feature","geometry":mapping(merged_geom),"properties":{}}
+                ]
+            }
+        else:
+            st.error("Multiple disjoint polygons detected; merged polygon download is disabled for now.")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -268,13 +275,14 @@ if st.session_state['generate_done'] and st.session_state['coords']:
                 mime="application/vnd.google-earth.kml+xml",
                 use_container_width=True
             )
-            st.download_button(
-                "Download Merged KML",
-                merged_kml_bytes,
-                file_name="merged_polygons.kml",
-                mime="application/vnd.google-earth.kml+xml",
-                use_container_width=True
-            )
+            if merged_available:
+                st.download_button(
+                    "Download Merged KML",
+                    merged_kml_bytes,
+                    file_name="merged_polygons.kml",
+                    mime="application/vnd.google-earth.kml+xml",
+                    use_container_width=True
+                )
         with col2:
             st.download_button(
                 "Download GeoJSON",
@@ -283,13 +291,14 @@ if st.session_state['generate_done'] and st.session_state['coords']:
                 mime="application/geo+json",
                 use_container_width=True
             )
-            st.download_button(
-                "Download Merged GeoJSON",
-                json.dumps(merged_gj, indent=2).encode('utf-8'),
-                file_name="merged_polygons.geojson",
-                mime="application/geo+json",
-                use_container_width=True
-            )
+            if merged_available:
+                st.download_button(
+                    "Download Merged GeoJSON",
+                    json.dumps(merged_gj, indent=2).encode('utf-8'),
+                    file_name="merged_polygons.geojson",
+                    mime="application/geo+json",
+                    use_container_width=True
+                )
 
         pop = estimate_population_from_coords(polygons, "data/landscan-global-2023.tif")
         if pop is not None:
