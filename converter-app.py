@@ -264,7 +264,7 @@ if st.session_state['generate_done'] and st.session_state['coords']:
                 ]
             }
         else:
-            st.error("Multiple disjoint polygons detected; download merged is disabled.")
+            st.error("Non-contiguous polygons detected; download merged is disabled.")
 
         col1, col2 = st.columns(2)
         with col1:
