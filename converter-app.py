@@ -37,6 +37,7 @@ st.markdown(
     "</p>",
     unsafe_allow_html=True
 )
+st.caption("Population estimates use LandScan Global 2023 data from ORNL.")
 
 # --- Helper functions ---
 def dm_to_dd(dm):
