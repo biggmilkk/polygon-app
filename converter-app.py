@@ -37,7 +37,7 @@ st.markdown(
     "</p>",
     unsafe_allow_html=True
 )
-st.caption("Population estimates use LandScan Global 2023 data from ORNL.")
+st.caption("Population estimates use LandScan Global 2024 data from ORNL.")
 
 # --- Helper functions ---
 def dm_to_dd(dm):
@@ -301,7 +301,7 @@ if st.session_state['generate_done'] and st.session_state['coords']:
                     use_container_width=True
                 )
 
-        pop = estimate_population_from_coords(polygons, "data/landscan-global-2023.tif")
+        pop = estimate_population_from_coords(polygons, "data/landscan-global-2024.tif")
         if pop is not None:
             st.success(f"Estimated Population: {pop:,.0f}")
 
