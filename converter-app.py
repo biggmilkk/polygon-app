@@ -33,11 +33,10 @@ st.markdown("<h2 style='text-align: center;'>Polygon Generator and Population Es
 st.markdown(
     "<p style='text-align: center; font-size: 0.9rem; color: grey;'>"
     "Upload spatial data files or enter coordinates manually to visualize geographic areas "
-    "on an interactive map. Define custom polygons and generate population estimates using LandScan data."
+    "on an interactive map. Define custom polygons and generate population estimates using LandScan Global 2024 data from ORNL."
     "</p>",
     unsafe_allow_html=True
 )
-st.caption("Population estimates use LandScan Global 2024 data from ORNL.")
 
 # --- Helper functions ---
 def dm_to_dd(dm):
