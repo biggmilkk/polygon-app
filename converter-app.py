@@ -29,9 +29,9 @@ for key, default in {
         st.session_state[key] = default
 
 # --- Page header ---
-st.markdown("<h2 style='text-align: center;'>Polygon Generator and Population Estimate</h2>", unsafe_allow_html=True)
+st.markdown("<h2>Polygon Generator and Population Estimate</h2>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; font-size: 0.9rem; color: grey;'>"
+    "<p style='font-size: 0.9rem; color: grey;'>"
     "Upload spatial data files or enter coordinates manually to visualize geographic areas "
     "on an interactive map. Define custom polygons and generate population estimates using LandScan Global 2024 data from ORNL."
     "</p>",
