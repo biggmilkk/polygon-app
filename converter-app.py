@@ -418,7 +418,7 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
                 mime="application/vnd.google-earth.kml+xml",
                 use_container_width=True
             )
-            if merged_available:
+            if input_mode == "Upload Map Files" and merged_available:
                 st.download_button(
                     "Download Merged KML",
                     merged_kml_bytes,
@@ -435,7 +435,7 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
                 mime="application/geo+json",
                 use_container_width=True
             )
-            if merged_available:
+            if input_mode == "Upload Map Files" and merged_available:
                 st.download_button(
                     "Download Merged GeoJSON",
                     json.dumps(merged_gj, indent=2).encode("utf-8"),
