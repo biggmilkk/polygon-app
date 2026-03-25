@@ -69,9 +69,9 @@ def lonlat_to_latlon(coords):
 
 def parse_nws_latlon(text):
     """
-    Parse NOAA/NWS style polygon text such as:
-    LAT...LON 1839 6620 1842 6619 ...
-    Returns [[(lat, lon), ...]]
+    Parse LAT...LON blocks where values are hundredths of decimal degrees.
+    Example:
+        1839 6620 -> 18.39, -66.20
     """
     nums = re.findall(r"\b\d{4}\b", text)
     if len(nums) < 6 or len(nums) % 2 != 0:
@@ -79,20 +79,8 @@ def parse_nws_latlon(text):
 
     coords = []
     for i in range(0, len(nums), 2):
-        lat_dm = int(nums[i])
-        lon_dm = int(nums[i + 1])
-
-        lat_deg = lat_dm // 100
-        lat_min = lat_dm % 100
-        lon_deg = lon_dm // 100
-        lon_min = lon_dm % 100
-
-        if lat_min >= 60 or lon_min >= 60:
-            return []
-
-        lat = round(lat_deg + lat_min / 60.0, 6)
-        lon = round(-(lon_deg + lon_min / 60.0), 6)  # assume western hemisphere
-
+        lat = round(int(nums[i]) / 100.0, 6)
+        lon = round(-(int(nums[i + 1]) / 100.0), 6)  # western hemisphere
         coords.append((lat, lon))
 
     return [close_ring(coords)]
@@ -100,11 +88,9 @@ def parse_nws_latlon(text):
 def parse_coords(text):
     text = text.strip()
 
-    # 1) Explicit NOAA/NWS LAT...LON parser
+    # 1) Explicit weather LAT...LON parser
     if "LAT...LON" in text.upper():
-        parsed = parse_nws_latlon(text)
-        if parsed:
-            return parsed
+        return parse_nws_latlon(text)
 
     normalized = text.replace(",", " ").replace(";", " ")
 
@@ -123,7 +109,7 @@ def parse_coords(text):
         except Exception:
             pass
 
-    # 3) Decimal degrees parser
+    # 3) Decimal degree parser
     floats = re.findall(r"[-+]?\d+(?:\.\d+)?", normalized)
     try:
         nums = list(map(float, floats))
@@ -135,7 +121,7 @@ def parse_coords(text):
     except Exception:
         pass
 
-    # 4) DM parser fallback
+    # 4) Degrees-minutes fallback for generic integer pairs
     ints = re.findall(r"\b\d+\b", normalized)
     try:
         toks = list(map(int, ints))
@@ -174,14 +160,10 @@ def extract_coords_from_kmz(kmz_bytes):
     return []
 
 def geometry_to_latlon_polygons(geom):
-    """
-    Convert shapely Polygon or MultiPolygon to list of polygons in (lat, lon).
-    Only exterior rings are used.
-    """
     polygons = []
 
     if isinstance(geom, Polygon):
-        coords = list(geom.exterior.coords)  # (lon, lat)
+        coords = list(geom.exterior.coords)
         polygons.append(lonlat_to_latlon(coords))
     elif isinstance(geom, MultiPolygon):
         for part in geom.geoms:
@@ -212,10 +194,6 @@ def estimate_population_from_coords(multi_coords, raster_path):
         return None
 
 def build_merged_geometry(polygons_latlon):
-    """
-    polygons_latlon: list of polygons where each polygon is [(lat, lon), ...]
-    returns shapely geometry in correct GIS coordinate order (lon, lat)
-    """
     shapely_polys = []
     for poly in polygons_latlon:
         lonlat = latlon_to_lonlat(poly)
@@ -352,7 +330,6 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
         # Build individual KML
         kml = simplekml.Kml()
         for i, poly in enumerate(polygons):
-            # simplekml expects (lon, lat)
             kml.newpolygon(
                 name=f"Polygon {i + 1}",
                 outerboundaryis=latlon_to_lonlat(poly)
@@ -374,7 +351,7 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
             ]
         }
 
-        # Correct merged geometry
+        # Merged geometry
         merged_geom = build_merged_geometry(polygons)
 
         merged_available = False
@@ -383,7 +360,7 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
 
         if merged_geom and isinstance(merged_geom, Polygon):
             merged_available = True
-            merged_coords = list(merged_geom.exterior.coords)  # already (lon, lat)
+            merged_coords = list(merged_geom.exterior.coords)
 
             mkml = simplekml.Kml()
             mkml.newpolygon(
@@ -405,7 +382,6 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
 
         elif merged_geom and isinstance(merged_geom, MultiPolygon):
             st.warning("Non-contiguous polygons detected; merged download is disabled.")
-
         else:
             st.error("Unable to build merged geometry.")
 
@@ -451,7 +427,6 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
 
     st.markdown("<h4 style='text-align: center;'>Polygon Preview</h4>", unsafe_allow_html=True)
 
-    # Folium expects (lat, lon)
     m = folium.Map(tiles="CartoDB positron")
     pts = []
 
