@@ -213,6 +213,13 @@ def build_merged_geometry(polygons_latlon):
 
     return merged
 
+def clear_coordinate_input():
+    st.session_state["coord_input"] = ""
+    st.session_state["coords"] = []
+    st.session_state["coord_trigger"] = False
+    st.session_state["generate_done"] = False
+    st.session_state["map_key"] += 1
+
 # ---------------------------
 # Uploader callback
 # ---------------------------
@@ -273,11 +280,25 @@ if st.session_state["last_input_mode"] != input_mode:
 if input_mode == "Paste Coordinates":
     st.text_area("Coordinates:", height=150, key="coord_input")
 
-    if st.button("Generate Map", use_container_width=True):
-        st.session_state["coord_trigger"] = True
-        st.session_state["upload_trigger"] = False
-        st.session_state["generate_done"] = True
-        st.session_state["map_key"] += 1
+    show_clear = st.session_state["generate_done"] and st.session_state["coords"]
+
+    if show_clear:
+        col1, col2 = st.columns(2)
+    else:
+        col1 = st.container()
+
+    with col1:
+        if st.button("Generate Map", use_container_width=True):
+            st.session_state["coord_trigger"] = True
+            st.session_state["upload_trigger"] = False
+            st.session_state["generate_done"] = True
+            st.session_state["map_key"] += 1
+
+    if show_clear:
+        with col2:
+            if st.button("Clear Coordinates", use_container_width=True):
+                clear_coordinate_input()
+                st.rerun()
 
 # ---------------------------
 # Upload files
@@ -310,6 +331,7 @@ if st.session_state["coord_trigger"]:
             st.session_state["coords"] = parsed
         else:
             st.error("No valid coordinates found.")
+            st.session_state["generate_done"] = False
     st.session_state["coord_trigger"] = False
 
 # ---------------------------
@@ -318,6 +340,7 @@ if st.session_state["coord_trigger"]:
 if st.session_state["upload_trigger"]:
     if not st.session_state.get("uploaded_files"):
         st.error("Please upload a valid file.")
+        st.session_state["generate_done"] = False
     st.session_state["upload_trigger"] = False
 
 # ---------------------------
