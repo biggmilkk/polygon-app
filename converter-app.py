@@ -28,6 +28,8 @@ for key, default in {
     "map_key": 0,
     "coord_input": "",
     "clear_coord_input": False,
+    "clear_uploaded_files": False,
+    "uploaded_files": [],
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -201,12 +203,23 @@ def trigger_clear_coordinates():
     st.session_state["map_key"] += 1
     st.session_state["clear_coord_input"] = True
 
+def trigger_clear_map():
+    st.session_state["coords"] = []
+    st.session_state["upload_trigger"] = False
+    st.session_state["generate_done"] = False
+    st.session_state["map_key"] += 1
+    st.session_state["clear_uploaded_files"] = True
+
 # ---------------------------
-# Pre-widget reset hook
+# Pre-widget reset hooks
 # ---------------------------
 if st.session_state["clear_coord_input"]:
     st.session_state["coord_input"] = ""
     st.session_state["clear_coord_input"] = False
+
+if st.session_state["clear_uploaded_files"]:
+    st.session_state["uploaded_files"] = []
+    st.session_state["clear_uploaded_files"] = False
 
 # ---------------------------
 # Page header
@@ -275,6 +288,8 @@ if st.session_state["last_input_mode"] != input_mode:
     st.session_state["generate_done"] = False
     if input_mode == "Paste Coordinates":
         st.session_state["clear_coord_input"] = True
+    else:
+        st.session_state["clear_uploaded_files"] = True
 
 # ---------------------------
 # Paste Coordinates
@@ -437,6 +452,12 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
                 "Clear Coordinates",
                 use_container_width=True,
                 on_click=trigger_clear_coordinates
+            )
+        else:
+            st.button(
+                "Clear Map",
+                use_container_width=True,
+                on_click=trigger_clear_map
             )
 
         pop = estimate_population_from_coords(polygons, "data/landscan-global-2024.tif")
