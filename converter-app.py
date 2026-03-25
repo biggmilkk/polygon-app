@@ -20,27 +20,17 @@ st.set_page_config(page_title="Polygon Generator and Population Estimate", layou
 # Session state initialization
 # ---------------------------
 for key, default in {
-    "coords": [],              # stored internally as [(lat, lon), ...]
+    "coords": [],
     "coord_trigger": False,
     "upload_trigger": False,
     "last_input_mode": None,
     "generate_done": False,
     "map_key": 0,
+    "coord_input": "",
+    "clear_coord_input": False,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
-
-# ---------------------------
-# Page header
-# ---------------------------
-st.markdown("<h2>Polygon Generator and Population Estimate</h2>", unsafe_allow_html=True)
-st.markdown(
-    "<p style='font-size: 0.9rem; color: grey;'>"
-    "Upload spatial data files or enter coordinates manually to visualize geographic areas "
-    "on an interactive map. Define custom polygons and generate population estimates using LandScan Global 2024 data from ORNL."
-    "</p>",
-    unsafe_allow_html=True
-)
 
 # ---------------------------
 # Helper functions
@@ -68,11 +58,6 @@ def lonlat_to_latlon(coords):
     return [(lat, lon) for lon, lat in coords]
 
 def parse_nws_latlon(text):
-    """
-    Parse LAT...LON blocks where values are hundredths of decimal degrees.
-    Example:
-        1839 6620 -> 18.39, -66.20
-    """
     nums = re.findall(r"\b\d{4}\b", text)
     if len(nums) < 6 or len(nums) % 2 != 0:
         return []
@@ -80,7 +65,7 @@ def parse_nws_latlon(text):
     coords = []
     for i in range(0, len(nums), 2):
         lat = round(int(nums[i]) / 100.0, 6)
-        lon = round(-(int(nums[i + 1]) / 100.0), 6)  # western hemisphere
+        lon = round(-(int(nums[i + 1]) / 100.0), 6)
         coords.append((lat, lon))
 
     return [close_ring(coords)]
@@ -88,13 +73,11 @@ def parse_nws_latlon(text):
 def parse_coords(text):
     text = text.strip()
 
-    # 1) Explicit weather LAT...LON parser
     if "LAT...LON" in text.upper():
         return parse_nws_latlon(text)
 
     normalized = text.replace(",", " ").replace(";", " ")
 
-    # 2) DMS parser
     dms = re.findall(r"(\d+)[°:\s](\d+)[′'\s:](\d+)[″\"\s]?([NSEW])", normalized.upper())
     if len(dms) >= 2:
         try:
@@ -109,7 +92,6 @@ def parse_coords(text):
         except Exception:
             pass
 
-    # 3) Decimal degree parser
     floats = re.findall(r"[-+]?\d+(?:\.\d+)?", normalized)
     try:
         nums = list(map(float, floats))
@@ -121,7 +103,6 @@ def parse_coords(text):
     except Exception:
         pass
 
-    # 4) Degrees-minutes fallback for generic integer pairs
     ints = re.findall(r"\b\d+\b", normalized)
     try:
         toks = list(map(int, ints))
@@ -213,12 +194,31 @@ def build_merged_geometry(polygons_latlon):
 
     return merged
 
-def clear_coordinate_input():
-    st.session_state["coord_input"] = ""
+def trigger_clear_coordinates():
     st.session_state["coords"] = []
     st.session_state["coord_trigger"] = False
     st.session_state["generate_done"] = False
     st.session_state["map_key"] += 1
+    st.session_state["clear_coord_input"] = True
+
+# ---------------------------
+# Pre-widget reset hook
+# ---------------------------
+if st.session_state["clear_coord_input"]:
+    st.session_state["coord_input"] = ""
+    st.session_state["clear_coord_input"] = False
+
+# ---------------------------
+# Page header
+# ---------------------------
+st.markdown("<h2>Polygon Generator and Population Estimate</h2>", unsafe_allow_html=True)
+st.markdown(
+    "<p style='font-size: 0.9rem; color: grey;'>"
+    "Upload spatial data files or enter coordinates manually to visualize geographic areas "
+    "on an interactive map. Define custom polygons and generate population estimates using LandScan Global 2024 data from ORNL."
+    "</p>",
+    unsafe_allow_html=True
+)
 
 # ---------------------------
 # Uploader callback
@@ -273,6 +273,8 @@ if st.session_state["last_input_mode"] != input_mode:
     st.session_state["last_input_mode"] = input_mode
     st.session_state["coords"] = []
     st.session_state["generate_done"] = False
+    if input_mode == "Paste Coordinates":
+        st.session_state["clear_coord_input"] = True
 
 # ---------------------------
 # Paste Coordinates
@@ -280,25 +282,20 @@ if st.session_state["last_input_mode"] != input_mode:
 if input_mode == "Paste Coordinates":
     st.text_area("Coordinates:", height=150, key="coord_input")
 
-    show_clear = st.session_state["generate_done"] and st.session_state["coords"]
-
-    if show_clear:
-        col1, col2 = st.columns(2)
-    else:
-        col1 = st.container()
+    col1, col2 = st.columns(2)
 
     with col1:
         if st.button("Generate Map", use_container_width=True):
             st.session_state["coord_trigger"] = True
             st.session_state["upload_trigger"] = False
-            st.session_state["generate_done"] = True
-            st.session_state["map_key"] += 1
 
-    if show_clear:
-        with col2:
-            if st.button("Clear Coordinates", use_container_width=True):
-                clear_coordinate_input()
-                st.rerun()
+    with col2:
+        if st.session_state["generate_done"] and st.session_state["coords"]:
+            st.button(
+                "Clear Coordinates",
+                use_container_width=True,
+                on_click=trigger_clear_coordinates
+            )
 
 # ---------------------------
 # Upload files
@@ -325,14 +322,19 @@ if st.session_state["coord_trigger"]:
     txt = st.session_state.get("coord_input", "").strip()
     if not txt:
         st.error("Please enter some coordinates.")
+        st.session_state["generate_done"] = False
     else:
         parsed = parse_coords(txt)
         if parsed:
             st.session_state["coords"] = parsed
+            st.session_state["generate_done"] = True
+            st.session_state["map_key"] += 1
         else:
             st.error("No valid coordinates found.")
+            st.session_state["coords"] = []
             st.session_state["generate_done"] = False
     st.session_state["coord_trigger"] = False
+    st.rerun()
 
 # ---------------------------
 # Upload trigger cleanup
@@ -350,7 +352,6 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
     polygons = st.session_state["coords"]
 
     with st.spinner("Generating map and estimating population..."):
-        # Build individual KML
         kml = simplekml.Kml()
         for i, poly in enumerate(polygons):
             kml.newpolygon(
@@ -358,7 +359,6 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
                 outerboundaryis=latlon_to_lonlat(poly)
             )
 
-        # Build GeoJSON
         gj = {
             "type": "FeatureCollection",
             "features": [
@@ -374,7 +374,6 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
             ]
         }
 
-        # Merged geometry
         merged_geom = build_merged_geometry(polygons)
 
         merged_available = False
