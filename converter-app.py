@@ -28,8 +28,7 @@ for key, default in {
     "map_key": 0,
     "coord_input": "",
     "clear_coord_input": False,
-    "clear_uploaded_files": False,
-    "uploaded_files": [],
+    "uploader_key": 0,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -208,7 +207,7 @@ def trigger_clear_map():
     st.session_state["upload_trigger"] = False
     st.session_state["generate_done"] = False
     st.session_state["map_key"] += 1
-    st.session_state["clear_uploaded_files"] = True
+    st.session_state["uploader_key"] += 1
 
 # ---------------------------
 # Pre-widget reset hooks
@@ -216,10 +215,6 @@ def trigger_clear_map():
 if st.session_state["clear_coord_input"]:
     st.session_state["coord_input"] = ""
     st.session_state["clear_coord_input"] = False
-
-if st.session_state["clear_uploaded_files"]:
-    st.session_state["uploaded_files"] = []
-    st.session_state["clear_uploaded_files"] = False
 
 # ---------------------------
 # Page header
@@ -237,7 +232,8 @@ st.markdown(
 # Uploader callback
 # ---------------------------
 def _on_upload_change():
-    files = st.session_state.uploaded_files or []
+    current_uploader_key = f"uploaded_files_{st.session_state['uploader_key']}"
+    files = st.session_state.get(current_uploader_key, []) or []
     polys = []
 
     for u in files:
@@ -289,7 +285,7 @@ if st.session_state["last_input_mode"] != input_mode:
     if input_mode == "Paste Coordinates":
         st.session_state["clear_coord_input"] = True
     else:
-        st.session_state["clear_uploaded_files"] = True
+        st.session_state["uploader_key"] += 1
 
 # ---------------------------
 # Paste Coordinates
@@ -308,7 +304,7 @@ else:
     st.file_uploader(
         "Upload Polygon Files (KML, KMZ, GeoJSON, JSON)",
         type=["kml", "kmz", "geojson", "json"],
-        key="uploaded_files",
+        key=f"uploaded_files_{st.session_state['uploader_key']}",
         accept_multiple_files=True,
         on_change=_on_upload_change
     )
@@ -344,7 +340,8 @@ if st.session_state["coord_trigger"]:
 # Upload trigger cleanup
 # ---------------------------
 if st.session_state["upload_trigger"]:
-    if not st.session_state.get("uploaded_files"):
+    current_uploader_key = f"uploaded_files_{st.session_state['uploader_key']}"
+    if not st.session_state.get(current_uploader_key):
         st.error("Please upload a valid file.")
         st.session_state["generate_done"] = False
     st.session_state["upload_trigger"] = False
