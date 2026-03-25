@@ -282,20 +282,9 @@ if st.session_state["last_input_mode"] != input_mode:
 if input_mode == "Paste Coordinates":
     st.text_area("Coordinates:", height=150, key="coord_input")
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Generate Map", use_container_width=True):
-            st.session_state["coord_trigger"] = True
-            st.session_state["upload_trigger"] = False
-
-    with col2:
-        if st.session_state["generate_done"] and st.session_state["coords"]:
-            st.button(
-                "Clear Coordinates",
-                use_container_width=True,
-                on_click=trigger_clear_coordinates
-            )
+    if st.button("Generate Map", use_container_width=True):
+        st.session_state["coord_trigger"] = True
+        st.session_state["upload_trigger"] = False
 
 # ---------------------------
 # Upload files
@@ -442,6 +431,13 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
                     mime="application/geo+json",
                     use_container_width=True
                 )
+
+        if input_mode == "Paste Coordinates":
+            st.button(
+                "Clear Coordinates",
+                use_container_width=True,
+                on_click=trigger_clear_coordinates
+            )
 
         pop = estimate_population_from_coords(polygons, "data/landscan-global-2024.tif")
         if pop is not None:
