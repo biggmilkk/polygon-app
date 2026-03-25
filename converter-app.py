@@ -222,8 +222,7 @@ if st.session_state["clear_coord_input"]:
 st.markdown("<h2>Polygon Generator and Population Estimate</h2>", unsafe_allow_html=True)
 st.markdown(
     "<p style='font-size: 0.9rem; color: grey;'>"
-    "Upload spatial data files or enter coordinates manually to visualize geographic areas "
-    "on an interactive map. Define custom polygons and generate population estimates using LandScan Global 2024 data from ORNL."
+    "Upload spatial data files or enter coordinates manually to visualize geographic areas, and generate population estimates using LandScan Global 2024 data from ORNL."
     "</p>",
     unsafe_allow_html=True
 )
