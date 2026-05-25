@@ -13,10 +13,7 @@ from io import BytesIO
 from shapely.geometry import Polygon, MultiPolygon, mapping, shape
 from shapely.ops import unary_union
 
-st.set_page_config(
-    page_title="Polygon Generator and Population Estimate",
-    layout="centered"
-)
+st.set_page_config(page_title="Polygon Generator and Population Estimate", layout="centered")
 
 # ---------------------------
 # Session state initialization
@@ -67,12 +64,10 @@ def lonlat_to_latlon(coords):
 
 def parse_nws_latlon(text):
     nums = re.findall(r"\b\d{4}\b", text)
-
     if len(nums) < 6 or len(nums) % 2 != 0:
         return []
 
     coords = []
-
     for i in range(0, len(nums), 2):
         lat = round(int(nums[i]) / 100.0, 6)
         lon = round(-(int(nums[i + 1]) / 100.0), 6)
@@ -97,7 +92,6 @@ def parse_coords(text):
     if len(dms) >= 2:
         try:
             coords = []
-
             for i in range(0, len(dms) - 1, 2):
                 ld, lm, ls, ldir = dms[i]
                 od, om, os, odir = dms[i + 1]
@@ -108,7 +102,6 @@ def parse_coords(text):
                 coords.append((lat, lon))
 
             return [close_ring(coords)]
-
         except Exception:
             pass
 
@@ -118,28 +111,43 @@ def parse_coords(text):
         nums = list(map(float, floats))
 
         if len(nums) >= 6 and len(nums) % 2 == 0:
-            coords = []
+            has_decimal = any("." in n for n in floats)
+            has_negative = any(n < 0 for n in nums)
 
-            for i in range(0, len(nums), 2):
-                coords.append((nums[i], nums[i + 1]))
+            if has_decimal or has_negative:
+                coords = []
 
-            return [close_ring(coords)]
+                for i in range(0, len(nums), 2):
+                    coords.append((nums[i], nums[i + 1]))
+
+                return [close_ring(coords)]
 
     except Exception:
         pass
 
-    ints = re.findall(r"\b\d+\b", normalized)
+    ints = re.findall(r"\b\d{4}\b", normalized)
 
     try:
         toks = list(map(int, ints))
 
-        if len(toks) >= 6 and len(toks) % 2 == 0 and all((t % 100) < 60 for t in toks):
+        if len(toks) >= 6 and len(toks) % 2 == 0:
+            looks_like_bare_nws = any((t % 100) >= 60 for t in toks)
+
+            if looks_like_bare_nws:
+                coords = []
+
+                for i in range(0, len(toks), 2):
+                    lat = round(toks[i] / 100.0, 6)
+                    lon = round(-(toks[i + 1] / 100.0), 6)
+                    coords.append((lat, lon))
+
+                return [close_ring(coords)]
+
             coords = []
 
             for i in range(0, len(toks), 2):
                 lat = dm_to_dd(toks[i])
                 lon = -dm_to_dd(toks[i + 1])
-
                 coords.append((lat, lon))
 
             return [close_ring(coords)]
@@ -155,10 +163,7 @@ def extract_coords_from_kml_string(kml_str):
     root = ET.fromstring(kml_str)
     polys = []
 
-    for node in root.findall(
-        ".//kml:Polygon//kml:outerBoundaryIs//kml:LinearRing//kml:coordinates",
-        ns
-    ):
+    for node in root.findall(".//kml:Polygon//kml:outerBoundaryIs//kml:LinearRing//kml:coordinates", ns):
         pts = []
         raw = node.text.strip().split()
 
@@ -175,9 +180,7 @@ def extract_coords_from_kmz(kmz_bytes):
     with zipfile.ZipFile(BytesIO(kmz_bytes)) as z:
         for name in z.namelist():
             if name.lower().endswith(".kml"):
-                return extract_coords_from_kml_string(
-                    z.read(name).decode("utf-8")
-                )
+                return extract_coords_from_kml_string(z.read(name).decode("utf-8"))
 
     return []
 
@@ -211,28 +214,14 @@ def estimate_population_from_coords(multi_coords, raster_path):
             for coords in multi_coords
         ]
 
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".geojson",
-            mode="w",
-            encoding="utf-8"
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".geojson", mode="w", encoding="utf-8") as tmp:
             gdf = gpd.GeoDataFrame.from_features(feats, crs="EPSG:4326")
             gdf.to_file(tmp.name, driver="GeoJSON")
-
-            stats = zonal_stats(
-                tmp.name,
-                raster_path,
-                stats=["sum"]
-            )
+            stats = zonal_stats(tmp.name, raster_path, stats=["sum"])
 
         os.unlink(tmp.name)
 
-        return sum(
-            s["sum"]
-            for s in stats
-            if s["sum"] is not None
-        )
+        return sum(s["sum"] for s in stats if s["sum"] is not None)
 
     except Exception as e:
         st.error(f"Error estimating population: {e}")
@@ -289,10 +278,7 @@ if st.session_state["clear_coord_input"]:
 # ---------------------------
 # Page header
 # ---------------------------
-st.markdown(
-    "<h2>Polygon Generator and Population Estimate</h2>",
-    unsafe_allow_html=True
-)
+st.markdown("<h2>Polygon Generator and Population Estimate</h2>", unsafe_allow_html=True)
 
 st.markdown(
     "<p style='font-size: 0.9rem; color: grey;'>"
@@ -319,34 +305,21 @@ def _on_upload_change():
 
                 if gj.get("type") == "FeatureCollection":
                     features = gj.get("features", [])
-
                 elif gj.get("type") == "Feature":
                     features = [gj]
-
                 else:
-                    features = [
-                        {
-                            "type": "Feature",
-                            "geometry": gj,
-                            "properties": {}
-                        }
-                    ]
+                    features = [{"type": "Feature", "geometry": gj, "properties": {}}]
 
                 for f in features:
                     geom = shape(f["geometry"])
 
                     if isinstance(geom, Polygon):
                         polys.extend(geometry_to_latlon_polygons(geom))
-
                     elif isinstance(geom, MultiPolygon):
                         polys.extend(geometry_to_latlon_polygons(geom))
 
             elif ext == "kml":
-                polys.extend(
-                    extract_coords_from_kml_string(
-                        u.read().decode("utf-8")
-                    )
-                )
+                polys.extend(extract_coords_from_kml_string(u.read().decode("utf-8")))
 
             elif ext == "kmz":
                 polys.extend(extract_coords_from_kmz(u.read()))
@@ -358,7 +331,6 @@ def _on_upload_change():
 
     if not files:
         st.session_state["generate_done"] = False
-
     elif st.session_state["generate_done"]:
         st.session_state["map_key"] += 1
 
@@ -379,7 +351,6 @@ if st.session_state["last_input_mode"] != input_mode:
 
     if input_mode == "Paste Coordinates":
         st.session_state["clear_coord_input"] = True
-
     else:
         st.session_state["uploader_key"] += 1
 
@@ -387,11 +358,7 @@ if st.session_state["last_input_mode"] != input_mode:
 # Paste Coordinates
 # ---------------------------
 if input_mode == "Paste Coordinates":
-    st.text_area(
-        "Coordinates:",
-        height=150,
-        key="coord_input"
-    )
+    st.text_area("Coordinates:", height=150, key="coord_input")
 
     if st.button("Generate Map", use_container_width=True):
         st.session_state["coord_trigger"] = True
@@ -513,9 +480,7 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
             }
 
         elif merged_geom and isinstance(merged_geom, MultiPolygon):
-            st.warning(
-                "Non-contiguous polygons detected; merged download is disabled."
-            )
+            st.warning("Non-contiguous polygons detected; merged download is disabled.")
 
         else:
             st.error("Unable to build merged geometry.")
@@ -564,7 +529,6 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
                 use_container_width=True,
                 on_click=trigger_clear_coordinates
             )
-
         else:
             st.button(
                 "Clear Map",
