@@ -63,14 +63,20 @@ def lonlat_to_latlon(coords):
 
 
 def parse_nws_latlon(text):
-    nums = re.findall(r"\b\d{4}\b", text)
+    nums = re.findall(r"\b\d{4,5}\b", text)
+
     if len(nums) < 6 or len(nums) % 2 != 0:
         return []
 
     coords = []
+
     for i in range(0, len(nums), 2):
-        lat = round(int(nums[i]) / 100.0, 6)
-        lon = round(-(int(nums[i + 1]) / 100.0), 6)
+        lat_token = nums[i]
+        lon_token = nums[i + 1]
+
+        lat = round(int(lat_token) / 100.0, 6)
+        lon = round(-(int(lon_token) / 100.0), 6)
+
         coords.append((lat, lon))
 
     return [close_ring(coords)]
