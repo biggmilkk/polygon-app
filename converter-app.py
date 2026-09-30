@@ -555,7 +555,7 @@ if st.session_state["generate_done"] and st.session_state["coords"]:
         unsafe_allow_html=True
     )
 
-    m = folium.Map(tiles="CartoDB positron")
+    m = folium.Map(tiles="OpenStreetMap")
     pts = []
 
     for poly in polygons:
